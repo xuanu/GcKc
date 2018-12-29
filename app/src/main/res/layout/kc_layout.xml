@@ -8,4 +8,38 @@
         android:layout_width="fill_parent"
         android:layout_height="fill_parent"
         android:clickable="true" />
+
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="#fff"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <TextView
+            android:id="@+id/baidu_location_tv"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="百度定位结果"
+            android:textColor="#000" />
+
+        <TextView
+            android:id="@+id/gaode_location_tv"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="高德定位结果"
+            android:textColor="#000" />
+
+        <TextView
+            android:id="@+id/point_space_tv"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="两点相距"
+            android:textColor="#000" />
+    </LinearLayout>
+
 </FrameLayout>

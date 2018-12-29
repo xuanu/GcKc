@@ -1,17 +1,27 @@
 package zeffect.cn.gckc;
 
+import android.Manifest;
+import android.annotation.SuppressLint;
+import android.arch.lifecycle.Observer;
+import android.arch.lifecycle.ViewModelProviders;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.TextView;
+import android.widget.Toast;
 
+import com.amap.api.location.CoordinateConverter;
+import com.amap.api.location.DPoint;
 import com.baidu.location.BDAbstractLocationListener;
 import com.baidu.location.BDLocation;
 import com.baidu.location.LocationClient;
+import com.baidu.location.LocationClientOption;
 import com.baidu.mapapi.map.BaiduMap;
 import com.baidu.mapapi.map.BitmapDescriptorFactory;
 import com.baidu.mapapi.map.MapStatus;
@@ -24,9 +34,16 @@ import com.baidu.mapapi.map.OverlayOptions;
 import com.baidu.mapapi.map.PolygonOptions;
 import com.baidu.mapapi.map.Stroke;
 import com.baidu.mapapi.model.LatLng;
+import com.blankj.utilcode.util.PermissionUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import zeffect.cn.gckc.kc.KcViewModel;
+import zeffect.cn.gckc.location.BaiduLocation;
+import zeffect.cn.gckc.location.GaodeLocation;
+import zeffect.cn.gckc.location.LocModel;
+import zeffect.cn.gckc.location.LocationListener;
 
 public class KcFragment extends Fragment {
 
@@ -44,32 +61,74 @@ public class KcFragment extends Fragment {
 
     private MapView mMapView = null;
     private BaiduMap baiduMap;
+    private BaiduLocation baiduLocation = new BaiduLocation();
+    private GaodeLocation gaodeLocation = new GaodeLocation();
+    private TextView baiduLoactionTv, gaodeLoactionTv, pointSpaceTv;
+
+    private KcViewModel kcViewModel;
 
 
+    @SuppressLint("MissingPermission")
     private void initView() {
+        kcViewModel = ViewModelProviders.of(this).get(KcViewModel.class);
         mMapView = (MapView) rootView.findViewById(R.id.bmapView);
+        baiduLoactionTv = (TextView) rootView.findViewById(R.id.baidu_location_tv);
+        gaodeLoactionTv = (TextView) rootView.findViewById(R.id.gaode_location_tv);
+        pointSpaceTv = (TextView) rootView.findViewById(R.id.point_space_tv);
+        kcViewModel.baiduLocationStr.observe(this, new Observer<String>() {
+            @Override
+            public void onChanged(@Nullable String s) {
+                if (s != null) {
+                    baiduLoactionTv.setText(s);
+                }
+            }
+        });
+        kcViewModel.gaodeLocationStr.observe(this, new Observer<String>() {
+            @Override
+            public void onChanged(@Nullable String s) {
+                if (s != null) {
+                    gaodeLoactionTv.setText(s);
+                }
+            }
+        });
+        kcViewModel.pointSpaceStr.observe(this, new Observer<String>() {
+            @Override
+            public void onChanged(@Nullable String s) {
+                if (s != null) {
+                    pointSpaceTv.setText(s
+                    );
+                }
+            }
+        });
         baiduMap = mMapView.getMap();
         baiduMap.setMyLocationEnabled(true);
-        LatLng cenpt = new LatLng(28.247259, 108.131532);
-        //定义地图状态
-        MapStatus mMapStatus = new MapStatus.Builder()
-                //要移动的点
-                .target(cenpt)
-                //放大地图到20倍
-                .zoom(17)
-                .build();
-
-        //定义MapStatusUpdate对象，以便描述地图状态将要发生的变化
-        MapStatusUpdate mMapStatusUpdate = MapStatusUpdateFactory.newMapStatus(mMapStatus);
-
-        //改变地图状态
-        baiduMap.setMapStatus(mMapStatusUpdate);
+        move2Point(28.248458, 108.132272, 17);
         drawGcxy();
-        mLocationClient = new LocationClient(this.getContext().getApplicationContext());
-        //声明LocationClient类
-        mLocationClient.registerLocationListener(myListener);
-        //注册监听函数
-        mLocationClient.start();
+        if (PermissionUtils.isGranted(Manifest.permission.READ_PHONE_STATE, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+            initlocation();
+        } else {
+            PermissionUtils.permission(Manifest.permission.READ_PHONE_STATE, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    .callback(new PermissionUtils.FullCallback() {
+                        @Override
+                        public void onGranted(List<String> permissionsGranted) {
+                            initlocation();
+                        }
+
+                        @Override
+                        public void onDenied(List<String> permissionsDeniedForever, List<String> permissionsDenied) {
+                            Toast.makeText(getContext(), "权限被拒绝！", Toast.LENGTH_SHORT).show();
+                        }
+                    }).request();
+        }
+    }
+
+
+    @SuppressLint("MissingPermission")
+    private void initlocation() {
+        baiduLocation.init(getActivity(), baiduListener);
+        baiduLocation.start();
+        gaodeLocation.init(getActivity(), gaodeListener);
+        gaodeLocation.start();
     }
 
 
@@ -78,13 +137,18 @@ public class KcFragment extends Fragment {
         super.onDestroy();
         //在activity执行onDestroy时执行mMapView.onDestroy()，实现地图生命周期管理
         mMapView.onDestroy();
+        baiduLocation.destory();
+        gaodeLocation.destory();
     }
 
+    @SuppressLint("MissingPermission")
     @Override
     public void onResume() {
         super.onResume();
         //在activity执行onResume时执行mMapView. onResume ()，实现地图生命周期管理
         mMapView.onResume();
+        baiduLocation.start();
+        gaodeLocation.start();
     }
 
     @Override
@@ -92,6 +156,8 @@ public class KcFragment extends Fragment {
         super.onPause();
         //在activity执行onPause时执行mMapView. onPause ()，实现地图生命周期管理
         mMapView.onPause();
+        baiduLocation.stop();
+        gaodeLocation.stop();
     }
 
 
@@ -129,33 +195,59 @@ public class KcFragment extends Fragment {
         baiduMap.addOverlay(polygonOption);
     }
 
-    public LocationClient mLocationClient = null;
-    private MyLocationListener myListener = new MyLocationListener();
 
-
-    public class MyLocationListener extends BDAbstractLocationListener {
-        @Override
-        public void onReceiveLocation(BDLocation location) {
-            Log.e("zeffect", "loca:" + location.toString());
-            //此处的BDLocation为定位结果信息类，通过它的各种get方法可获取定位相关的全部结果
-            double latitude = location.getLatitude();    //获取纬度信息
-            double longitude = location.getLongitude();    //获取经度信息
-            float radius = location.getRadius();    //获取定位精度，默认值为0.0f
-
-            String coorType = location.getCoorType();
-            //获取经纬度坐标类型，以LocationClientOption中设置过的坐标类型为准
-
-            int errorCode = location.getLocType();
-
-            if (location.getFloor() != null) {
-                // 当前支持高精度室内定位
-                String buildingID = location.getBuildingID();// 百度内部建筑物ID
-                String buildingName = location.getBuildingName();// 百度内部建筑物缩写
-                String floor = location.getFloor();// 室内定位的楼层信息，如 f1,f2,b1,b2
-                mLocationClient.startIndoorMode();// 开启室内定位模式（重复调用也没问题），开启后，定位SDK会融合各种定位信息（GPS,WI-FI，蓝牙，传感器等）连续平滑的输出定位结果；
-            }
-        }
+    private void move2Point(double lat, double lot, float zoom) {
+        LatLng cenpt = new LatLng(lat, lot);
+        MapStatus mMapStatus = new MapStatus.Builder()
+                .target(cenpt)
+                .zoom(zoom)
+                .build();
+        MapStatusUpdate mMapStatusUpdate = MapStatusUpdateFactory.newMapStatus(mMapStatus);
+        if (baiduMap != null) baiduMap.setMapStatus(mMapStatusUpdate);
     }
 
+
+    private boolean inSchool() {
+        return true;
+    }
+
+
+    private double inSamePos(DPoint dPoint1, DPoint dPoint2) {
+        return CoordinateConverter.calculateLineDistance(dPoint1, dPoint2);
+    }
+
+
+    private LocModel baiduLocaModel, gaodeLocaModel;
+
+    private void checkSame() {
+        if (baiduLocaModel == null || gaodeLocaModel == null) return;
+        if (!baiduLocaModel.isLocSuccess() || !gaodeLocaModel.isLocSuccess()) return;
+        double space = CoordinateConverter.calculateLineDistance(new DPoint(baiduLocaModel.getLat(), baiduLocaModel.getLon()), new DPoint(gaodeLocaModel.getLat(), gaodeLocaModel.getLon()));
+        kcViewModel.pointSpaceStr.postValue("两点相距：" + space + "米");
+    }
+
+    private LocationListener gaodeListener = new LocationListener() {
+        @Override
+        public void location(LocModel loc) {
+            if (kcViewModel != null) {
+                gaodeLocaModel = null;
+                gaodeLocaModel = loc;
+                checkSame();
+                kcViewModel.gaodeLocationStr.postValue(loc.getAddStr());
+            }
+        }
+    };
+
+    private LocationListener baiduListener = new LocationListener() {
+        @Override
+        public void location(LocModel loc) {
+            if (kcViewModel != null) {
+                baiduLocaModel = null;
+                baiduLocaModel = loc;
+                checkSame();
+                kcViewModel.baiduLocationStr.postValue(loc.getAddStr());
+            }
+        }
+    };
 
 }
